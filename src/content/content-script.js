@@ -193,17 +193,17 @@ class ExtractionIndicator {
       </div>
     `;
     this.shadowRoot.innerHTML = this.shadowRoot.innerHTML.replace(/<div class="indicator">[\s\S]*?<\/div>/, html);
-
+    
     // Find indicator div and update it
     const style = this.shadowRoot.querySelector('style');
     const indicatorDiv = document.createElement('div');
     indicatorDiv.className = 'indicator';
     indicatorDiv.innerHTML = html.replace(/<div class="indicator">|<\/div>/g, '');
-
+    
     // Clear and rebuild
     const allDivs = Array.from(this.shadowRoot.querySelectorAll('div'));
     allDivs.forEach(d => d.remove());
-
+    
     const indicator = document.createElement('div');
     indicator.className = 'indicator';
     indicator.innerHTML = `
@@ -219,7 +219,7 @@ class ExtractionIndicator {
         </div>
       </div>
     `;
-
+    
     this.shadowRoot.appendChild(indicator);
   }
 
@@ -238,7 +238,7 @@ class ExtractionIndicator {
           <div class="record-count">${count} records</div>
         </div>
       `;
-
+      
       // Auto-hide after 4 seconds
       setTimeout(() => {
         if (this.container) this.container.style.opacity = '0';
@@ -280,43 +280,6 @@ class ExtractionIndicator {
 
 // Global indicator instance
 const indicator = new ExtractionIndicator();
-
-// Helper to clean extracted text using regex
-function cleanText(text, type) {
-  if (!text) return '';
-
-  // Robust field patterns
-  const patterns = {
-    email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/,
-    phone: /(?:\+?\d{1,4}[-.\s]?)?\(?\d{2,5}\)?[-.\s]?\d{3,5}[-.\s]?\d{4,6}/
-  };
-
-  let cleaned = text.replace(/\s+/g, ' ').trim();
-
-  // Surgical Label Removal: Only strip if at start or standalone
-  const labels = ['Phone', 'Email', 'Mobile', 'Account Name', 'Lead Source', 'Source', 'Item', 'Edit', 'Change'];
-  labels.forEach(label => {
-    const regex = new RegExp(`^${label}:?\\s*`, 'i');
-    cleaned = cleaned.replace(regex, '');
-  });
-
-  if (type === 'email') {
-    const match = cleaned.match(patterns.email);
-    return match ? match[0] : '';
-  }
-
-  if (type === 'phone') {
-    const match = cleaned.match(patterns.phone);
-    if (cleaned.includes('@')) return ''; // Avoid emails
-    return match ? match[0] : '';
-  }
-
-  // Final sanity check for placeholders
-  const lower = cleaned.toLowerCase();
-  if (lower === 'null' || lower === 'n/a' || lower === 'undefined' || lower === '') return '';
-
-  return cleaned;
-}
 
 // Object type detection
 function detectObjectType() {
@@ -363,10 +326,10 @@ function isDetailView() {
 
 // Detect if we're in Kanban view (Pipeline Inspection)
 function isKanbanView() {
-  return window.location.pathname.includes('/lightning/o/') &&
-    (window.location.search.includes('kanban') ||
-      document.querySelector('[role="tablist"] [aria-selected="true"]')?.textContent?.includes('Kanban') ||
-      document.querySelector('.kanban-view, [data-qa="kanban"], .slds-kanban'));
+  return window.location.pathname.includes('/lightning/o/') && 
+         (window.location.search.includes('kanban') || 
+          document.querySelector('[role="tablist"] [aria-selected="true"]')?.textContent?.includes('Kanban') ||
+          document.querySelector('.kanban-view, [data-qa="kanban"], .slds-kanban'));
 }
 
 // Extract from Kanban view (e.g., Opportunities Pipeline)
@@ -376,13 +339,13 @@ function extractFromKanbanView() {
 
   // Kanban columns (stages)
   const kanbanColumns = document.querySelectorAll('.kanban-column, [data-qa="kanban-column"], .slds-scrollable_x > [role="region"]');
-
+  
   kanbanColumns.forEach((column) => {
     const stageLabel = column.querySelector('[class*="stage"], [data-qa*="stage"], .kanban-header')?.textContent?.trim();
-
+    
     // Extract cards from this column
     const cards = column.querySelectorAll('.kanban-card, [role="option"], [data-qa*="card"]');
-
+    
     cards.forEach((card) => {
       const link = card.querySelector('a[href*="/lightning/r/"]');
       if (!link) return;
@@ -433,7 +396,7 @@ async function extractWithPagination() {
     while (pageCount < maxPages) {
       // Extract records from current page
       const currentRecords = extractFromListView();
-
+      
       currentRecords.forEach((record) => {
         if (!seen.has(record.id)) {
           seen.add(record.id);
@@ -446,7 +409,7 @@ async function extractWithPagination() {
       // Look for next page button/link
       const nextButton = document.querySelector(
         'button[aria-label*="Next"], a[aria-label*="Next"], [data-qa*="next"]'
-      ) || Array.from(document.querySelectorAll('button, a')).find(el =>
+      ) || Array.from(document.querySelectorAll('button, a')).find(el => 
         el.textContent?.trim() === 'Next' && !el.disabled
       );
 
@@ -503,7 +466,7 @@ function extractRelatedRecords() {
     if (!parent) return;
 
     const rows = parent.querySelectorAll('tbody tr, [role="row"]');
-
+    
     rows.forEach((row) => {
       const cells = row.querySelectorAll('td, [role="gridcell"]');
       if (cells.length === 0) return;
@@ -570,7 +533,7 @@ function extractFromDetailPage() {
 
     // Get the value from the section, filtering out "Edit" buttons/links
     let value = '';
-
+    
     // Try to get specific formatted values first (best for Email, Phone, Currency)
     const formatted = section.querySelector('lightning-formatted-text, lightning-formatted-email, lightning-formatted-phone, lightning-formatted-number, lightning-formatted-name');
     if (formatted) {
@@ -599,17 +562,8 @@ function extractFromDetailPage() {
 
     if (value && value.length > 0 && value.length < 500) {
       const key = label.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
-
-      // Clean based on field type
-      if (key.includes('email')) {
-        extracted[key] = cleanText(value, 'email');
-      } else if (key.includes('phone') || key.includes('mobile')) {
-        extracted[key] = cleanText(value, 'phone');
-      } else {
-        extracted[key] = cleanText(value);
-      }
-
-      console.log(`[SF Extractor] Found field: ${key} = ${extracted[key]}`);
+      extracted[key] = value;
+      console.log(`[SF Extractor] Found field: ${key} = ${value}`);
     }
   });
 
@@ -645,18 +599,17 @@ function extractFromDetailPage() {
 
     // Find email in page
     const emailLink = Array.from(document.querySelectorAll('a[href^="mailto:"]')).find(el => el.textContent?.includes('@'));
-    if (emailLink) record.email = cleanText(emailLink.textContent, 'email');
+    if (emailLink) record.email = emailLink.textContent?.trim();
 
     // Find phone in page
     const phoneLink = Array.from(document.querySelectorAll('a[href^="tel:"]')).find(el => el.textContent);
-    if (phoneLink) record.phone = cleanText(phoneLink.textContent, 'phone');
+    if (phoneLink) record.phone = phoneLink.textContent?.trim();
   }
 
   record.extractedAt = Date.now();
   return record;
 }
 
-// Extract from list view
 // Extract from list view
 function extractFromListView() {
   const records = [];
@@ -687,131 +640,138 @@ function extractFromListView() {
     return records;
   }
 
-  // Map to fields based on dynamic column detection
-  const headers = Array.from(table.querySelectorAll('thead th')).map(th => {
-    const walker = document.createTreeWalker(th, NodeFilter.SHOW_TEXT, (node) => {
-      const parent = node.parentElement;
-      if (parent && (parent.classList.contains('slds-assistive-text') || parent.style.display === 'none' || parent.style.visibility === 'hidden')) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      return NodeFilter.FILTER_ACCEPT;
-    });
-
-    let headerText = '';
-    let node;
-    while (node = walker.nextNode()) headerText += node.textContent + ' ';
-    return headerText.trim().toLowerCase();
-  });
-
   rows.forEach((row, rowIndex) => {
     try {
       const cells = Array.from(row.querySelectorAll('td'));
-      if (cells.length === 0) return;
-
-      // Extract ID from first available link
-      let id = null;
-      const firstLink = row.querySelector('a[href*="/lightning/r/"]');
-      if (firstLink && firstLink.href) {
-        const matches = firstLink.href.match(/\/lightning\/r\/([a-zA-Z0-9]{15,18})/);
-        if (matches && matches[1]) id = matches[1];
+      if (cells.length === 0) {
+        console.log(`[SF Extractor] Row ${rowIndex}: No cells found`);
+        return;
       }
 
-      if (!id || seen.has(id)) return;
+      console.log(`[SF Extractor] Row ${rowIndex}: ${cells.length} cells`);
+
+      // Get record ID and name from first link
+      let id = null;
+      let name = null;
+      const firstLink = row.querySelector('a');
+
+      if (firstLink && firstLink.href) {
+        const href = firstLink.href;
+        console.log(`[SF Extractor] Row ${rowIndex}: Found link: ${href}`);
+        
+        // Extract ID from: /lightning/r/00Qf600000A8RbZEAV/view (ID is 15-18 chars after /r/)
+        const matches = href.match(/\/lightning\/r\/([a-zA-Z0-9]{15,18})/);
+        if (matches && matches[1]) {
+          id = matches[1];
+          name = firstLink.textContent?.trim() || '';
+          console.log(`[SF Extractor] Row ${rowIndex}: Extracted ID=${id}, Name="${name}"`);
+        } else {
+          console.log(`[SF Extractor] Row ${rowIndex}: Could not extract ID from href`);
+        }
+      }
+
+      if (!id) {
+        console.log(`[SF Extractor] Row ${rowIndex}: No valid Salesforce ID found, skipping`);
+        return;
+      }
+
+      if (seen.has(id)) {
+        console.log(`[SF Extractor] Row ${rowIndex}: Duplicate ID`);
+        return;
+      }
       seen.add(id);
 
       const record = {
         id: id,
+        name: name || '',
         extractedAt: Date.now()
       };
 
-      // 1. Scan the whole row for global patterns
-      const rowText = row.innerText.replace(/\s+/g, ' ');
-      const globalEmail = rowText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)?.[0] || '';
-      const globalPhone = rowText.match(/(?:\+?\d{1,4}[-.\s]?)?\(?\d{2,5}\)?[-.\s]?\d{3,5}[-.\s]?\d{4,6}/)?.[0] || '';
-
+      // Extract cell values - one per cell
       cells.forEach((cell, cellIndex) => {
-        const header = headers[cellIndex] || '';
-        if (header.includes('select') || cellIndex === 0) return;
-
+        // Get only direct text content, not from nested elements
         let text = '';
-        const formatted = cell.querySelector('lightning-formatted-text, lightning-formatted-email, lightning-formatted-phone, .slds-truncate a');
-        if (formatted) {
-          text = formatted.textContent?.trim();
+        
+        // If cell has a link, get that text
+        const link = cell.querySelector('a');
+        if (link && cellIndex === 1) {
+          text = link.textContent?.trim() || '';
         } else {
-          const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, (node) => {
-            const parent = node.parentElement;
-            if (parent && (parent.classList.contains('slds-assistive-text') || parent.classList.contains('slds-form-element__label') || parent.style.display === 'none')) {
-              return NodeFilter.FILTER_REJECT;
+          // Use TreeWalker to get text nodes only
+          const walker = document.createTreeWalker(
+            cell,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+          );
+          
+          const textParts = [];
+          let textNode;
+          while (textNode = walker.nextNode()) {
+            const content = textNode.textContent?.trim();
+            if (content && content.length > 0 && content !== 'Edit' && content !== 'Change') {
+              textParts.push(content);
             }
-            return NodeFilter.FILTER_ACCEPT;
-          });
-          const parts = [];
-          let node;
-          while (node = walker.nextNode()) parts.push(node.textContent?.trim());
-          text = parts.filter(p => p).join(' ').trim();
+          }
+          text = textParts.join(' ').trim();
         }
 
-        if (!text) return;
+        // Clean up text
+        text = text
+          .replace(/\s+/g, ' ')
+          .replace(/Edit\s*/g, '')
+          .replace(/Change\s*/g, '')
+          .trim();
 
-        // Surgical Mapping
-        if (header.includes('name') || header.includes('subject')) {
-          let cleanName = text;
-          if (globalEmail) cleanName = cleanName.replace(globalEmail, '');
-          if (globalPhone) cleanName = cleanName.replace(globalPhone, '');
-          record.name = cleanText(cleanName);
-          record.subject = record.name;
+        if (!text || text.length === 0) {
+          console.log(`[SF Extractor] Row ${rowIndex}, Cell ${cellIndex}: [empty]`);
+          return;
         }
-        else if (header.includes('account') || header.includes('company')) {
-          let cleanCompany = text;
-          if (globalEmail) cleanCompany = cleanCompany.replace(globalEmail, '');
-          if (globalPhone) cleanCompany = cleanCompany.replace(globalPhone, '');
-          record.company = cleanText(cleanCompany);
-          record.accountName = record.company;
-          record.account = record.company;
+
+        if (text.length > 150) {
+          console.log(`[SF Extractor] Row ${rowIndex}, Cell ${cellIndex}: [too long - ${text.length} chars]`);
+          return;
         }
-        else if (header.includes('phone') || header.includes('mobile')) {
-          record.phone = cleanText(text, 'phone');
-        }
-        else if (header.includes('email')) {
-          record.email = cleanText(text, 'email');
-        }
-        else if (header.includes('source')) {
-          record.leadSource = cleanText(text);
-        }
-        else if (header.includes('amount') || header.includes('revenue')) {
-          record.amount = cleanText(text).replace(/[$,]/g, '');
-        }
-        else if (header.includes('date')) {
-          const dt = cleanText(text);
-          record.closeDate = dt;
-          record.dueDate = dt;
-        }
-        else if (header.includes('owner') || header.includes('assign')) {
-          record.owner = cleanText(text);
-          record.assignedTo = record.owner;
-          record.assignee = record.owner;
-        }
-        else if (header.includes('status') || header.includes('stage')) {
-          record.status = cleanText(text);
-          record.stage = record.status;
-        }
-        else if (header.includes('priority')) {
-          record.priority = cleanText(text);
+
+        console.log(`[SF Extractor] Row ${rowIndex}, Cell ${cellIndex}: "${text}"`);
+
+        // Map to fields based on column position
+        if (cellIndex === 0) {
+          // Checkbox column, skip
+          return;
+        } else if (cellIndex === 1 && !record.name) {
+          record.name = text;
+        } else if (cellIndex === 2) {
+          record.title = text;
+        } else if (cellIndex === 3) {
+          record.company = text;
+        } else if (cellIndex === 4) {
+          // Phone or email
+          if (text.includes('@')) {
+            record.email = text;
+          } else {
+            record.phone = text;
+          }
+        } else if (cellIndex === 5) {
+          // Email, source, or owner
+          if (text.includes('@')) {
+            record.email = text;
+          } else {
+            record.source = text;
+          }
         }
       });
 
-      // 2. Final Field Backfill from Global Scan
-      if (!record.email && globalEmail) record.email = globalEmail;
-      if (!record.phone && globalPhone) record.phone = globalPhone;
-
-      // 3. Fallback for Name if missing
-      if (!record.name && firstLink) {
-        record.name = cleanText(firstLink.textContent);
-        record.subject = record.name;
-      }
-
-      if (record.name) {
+      if (record.name && record.name.length > 0) {
         records.push(record);
+        console.log(`[SF Extractor] Row ${rowIndex}: ✓ Extracted`, {
+          name: record.name,
+          title: record.title || '',
+          company: record.company || '',
+          phone: record.phone || '',
+          email: record.email || '',
+          source: record.source || ''
+        });
       }
     } catch (error) {
       console.error(`[SF Extractor] Row ${rowIndex}: ERROR`, error.message);
@@ -839,10 +799,10 @@ async function extractData() {
       // Extract single record from detail page
       const record = extractFromDetailPage();
       records = [record];
-
+      
       // Also extract related records (Contacts under Account, etc.)
       relatedRecords = extractRelatedRecords();
-
+      
       console.log('[SF Extractor] Extracted from detail page:', record);
       console.log('[SF Extractor] Related records found:', relatedRecords.length);
     } else if (isKanbanView()) {
@@ -878,7 +838,7 @@ async function extractData() {
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[SF Extractor] Message received:', request);
-
+  
   if (request.action !== 'extract') {
     return false;
   }
@@ -897,7 +857,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     const objectType = detectObjectType();
     console.log('[SF Extractor] Detected object type:', objectType);
-
+    
     if (!objectType) {
       console.error('[SF Extractor] Could not detect object type from page');
       sendResponse({
@@ -909,11 +869,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // Show loading indicator
     indicator.showLoading(objectType);
-
+    
     // Extract data (async)
     extractData().then((result) => {
       console.log('[SF Extractor] Extraction result:', result);
-
+      
       // Show success or error indicator
       if (result.success) {
         if (result.count === 0) {
@@ -933,8 +893,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }).catch((error) => {
       console.error('[SF Extractor] Async extraction error:', error);
       indicator.showError(error.message || 'Extraction failed');
-      sendResponse({
-        success: false,
+      sendResponse({ 
+        success: false, 
         error: error.message || 'Extraction failed. Please try again.'
       });
     });
@@ -942,8 +902,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Keep channel open for async response
   } catch (error) {
     console.error('[SF Extractor] Sync error:', error);
-    sendResponse({
-      success: false,
+    sendResponse({ 
+      success: false, 
       error: error.message || 'An unexpected error occurred'
     });
     return true;
