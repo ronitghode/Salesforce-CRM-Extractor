@@ -193,17 +193,17 @@ class ExtractionIndicator {
       </div>
     `;
     this.shadowRoot.innerHTML = this.shadowRoot.innerHTML.replace(/<div class="indicator">[\s\S]*?<\/div>/, html);
-    
+
     // Find indicator div and update it
     const style = this.shadowRoot.querySelector('style');
     const indicatorDiv = document.createElement('div');
     indicatorDiv.className = 'indicator';
     indicatorDiv.innerHTML = html.replace(/<div class="indicator">|<\/div>/g, '');
-    
+
     // Clear and rebuild
     const allDivs = Array.from(this.shadowRoot.querySelectorAll('div'));
     allDivs.forEach(d => d.remove());
-    
+
     const indicator = document.createElement('div');
     indicator.className = 'indicator';
     indicator.innerHTML = `
@@ -219,7 +219,7 @@ class ExtractionIndicator {
         </div>
       </div>
     `;
-    
+
     this.shadowRoot.appendChild(indicator);
   }
 
@@ -238,7 +238,7 @@ class ExtractionIndicator {
           <div class="record-count">${count} records</div>
         </div>
       `;
-      
+
       // Auto-hide after 4 seconds
       setTimeout(() => {
         if (this.container) this.container.style.opacity = '0';
@@ -281,23 +281,78 @@ class ExtractionIndicator {
 // Global indicator instance
 const indicator = new ExtractionIndicator();
 
+// Helper to clean extracted text using regex
+function cleanText(text, type) {
+  if (!text) return '';
+
+  // Robust field patterns
+  const patterns = {
+    email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/,
+    phone: /(?:\+?\d{1,4}[-.\s]?)?\(?\d{2,5}\)?[-.\s]?\d{3,5}[-.\s]?\d{4,6}/
+  };
+
+  let cleaned = text.replace(/\s+/g, ' ').trim();
+
+  // Surgical Label Removal: Only strip if at start or standalone
+  const labels = ['Phone', 'Email', 'Mobile', 'Account Name', 'Lead Source', 'Source', 'Item', 'Edit', 'Change'];
+  labels.forEach(label => {
+    const regex = new RegExp(`^${label}:?\\s*`, 'i');
+    cleaned = cleaned.replace(regex, '');
+  });
+
+  if (type === 'email') {
+    const match = cleaned.match(patterns.email);
+    return match ? match[0] : '';
+  }
+
+  if (type === 'phone') {
+    const match = cleaned.match(patterns.phone);
+    if (cleaned.includes('@')) return ''; // Avoid emails
+    return match ? match[0] : '';
+  }
+
+  // Final sanity check for placeholders
+  const lower = cleaned.toLowerCase();
+  if (lower === 'null' || lower === 'n/a' || lower === 'undefined' || lower === '') return '';
+
+  return cleaned;
+}
+
 // Object type detection
 function detectObjectType() {
-  const url = window.location.pathname;
-
-  if (url.includes('/lightning/o/Lead/')) return 'leads';
-  if (url.includes('/lightning/o/Contact/')) return 'contacts';
-  if (url.includes('/lightning/o/Account/')) return 'accounts';
-  if (url.includes('/lightning/o/Opportunity/')) return 'opportunities';
-  if (url.includes('/lightning/o/Task/')) return 'tasks';
-
+  const url = window.location.pathname.toLowerCase();
   const title = document.title.toLowerCase();
+
+  console.log('[SF Extractor] Current URL:', window.location.pathname);
+  console.log('[SF Extractor] Page Title:', document.title);
+
+  // Check URL patterns (case-insensitive)
+  if (url.includes('/lightning/o/lead/')) return 'leads';
+  if (url.includes('/lightning/o/contact/')) return 'contacts';
+  if (url.includes('/lightning/o/account/')) return 'accounts';
+  if (url.includes('/lightning/o/opportunity/')) return 'opportunities';
+  if (url.includes('/lightning/o/task/')) return 'tasks';
+
+  // Check title patterns
   if (title.includes('lead')) return 'leads';
   if (title.includes('contact')) return 'contacts';
   if (title.includes('account')) return 'accounts';
   if (title.includes('opportunity')) return 'opportunities';
   if (title.includes('task')) return 'tasks';
 
+  // Check page headers
+  const headers = Array.from(document.querySelectorAll('h1, h2, .pageTitle, [data-qa="page-header"]')).map(h => h.textContent.toLowerCase());
+  console.log('[SF Extractor] Page headers:', headers);
+
+  for (const header of headers) {
+    if (header.includes('lead')) return 'leads';
+    if (header.includes('contact')) return 'contacts';
+    if (header.includes('account')) return 'accounts';
+    if (header.includes('opportunity')) return 'opportunities';
+    if (header.includes('task')) return 'tasks';
+  }
+
+  console.log('[SF Extractor] Could not detect object type');
   return null;
 }
 
@@ -308,10 +363,10 @@ function isDetailView() {
 
 // Detect if we're in Kanban view (Pipeline Inspection)
 function isKanbanView() {
-  return window.location.pathname.includes('/lightning/o/') && 
-         (window.location.search.includes('kanban') || 
-          document.querySelector('[role="tablist"] [aria-selected="true"]')?.textContent?.includes('Kanban') ||
-          document.querySelector('.kanban-view, [data-qa="kanban"], .slds-kanban'));
+  return window.location.pathname.includes('/lightning/o/') &&
+    (window.location.search.includes('kanban') ||
+      document.querySelector('[role="tablist"] [aria-selected="true"]')?.textContent?.includes('Kanban') ||
+      document.querySelector('.kanban-view, [data-qa="kanban"], .slds-kanban'));
 }
 
 // Extract from Kanban view (e.g., Opportunities Pipeline)
@@ -321,13 +376,13 @@ function extractFromKanbanView() {
 
   // Kanban columns (stages)
   const kanbanColumns = document.querySelectorAll('.kanban-column, [data-qa="kanban-column"], .slds-scrollable_x > [role="region"]');
-  
+
   kanbanColumns.forEach((column) => {
     const stageLabel = column.querySelector('[class*="stage"], [data-qa*="stage"], .kanban-header')?.textContent?.trim();
-    
+
     // Extract cards from this column
     const cards = column.querySelectorAll('.kanban-card, [role="option"], [data-qa*="card"]');
-    
+
     cards.forEach((card) => {
       const link = card.querySelector('a[href*="/lightning/r/"]');
       if (!link) return;
@@ -378,7 +433,7 @@ async function extractWithPagination() {
     while (pageCount < maxPages) {
       // Extract records from current page
       const currentRecords = extractFromListView();
-      
+
       currentRecords.forEach((record) => {
         if (!seen.has(record.id)) {
           seen.add(record.id);
@@ -391,7 +446,7 @@ async function extractWithPagination() {
       // Look for next page button/link
       const nextButton = document.querySelector(
         'button[aria-label*="Next"], a[aria-label*="Next"], [data-qa*="next"]'
-      ) || Array.from(document.querySelectorAll('button, a')).find(el => 
+      ) || Array.from(document.querySelectorAll('button, a')).find(el =>
         el.textContent?.trim() === 'Next' && !el.disabled
       );
 
@@ -448,7 +503,7 @@ function extractRelatedRecords() {
     if (!parent) return;
 
     const rows = parent.querySelectorAll('tbody tr, [role="row"]');
-    
+
     rows.forEach((row) => {
       const cells = row.querySelectorAll('td, [role="gridcell"]');
       if (cells.length === 0) return;
@@ -497,6 +552,14 @@ function extractFromDetailPage() {
     record.id = 'id_' + Math.random().toString(36).substr(2, 9);
   }
 
+  console.log('[SF Extractor] Extracting detail page, ID:', record.id);
+
+  // Get title/name
+  const titleElement = document.querySelector('h1, [data-testid="title"], .pageTitle, .slds-page-header__title');
+  if (titleElement) {
+    record.name = titleElement.textContent?.trim().split('\n')[0] || '';
+  }
+
   // Strategy 1: Extract from field sections with data-label
   const fieldSections = document.querySelectorAll('[data-label]');
   const extracted = {};
@@ -507,7 +570,7 @@ function extractFromDetailPage() {
 
     // Get the value from the section, filtering out "Edit" buttons/links
     let value = '';
-    
+
     // Try to get specific formatted values first (best for Email, Phone, Currency)
     const formatted = section.querySelector('lightning-formatted-text, lightning-formatted-email, lightning-formatted-phone, lightning-formatted-number, lightning-formatted-name');
     if (formatted) {
@@ -525,8 +588,10 @@ function extractFromDetailPage() {
       let node;
       while (node = walker.nextNode()) {
         const text = node.textContent?.trim();
-        if (text && text !== 'Edit' && !text.startsWith('Edit ')) {
-          textNodes.push(text);
+        if (text && text !== 'Edit' && !text.startsWith('Edit ') && text.length < 300) {
+          if (!textNodes.includes(text)) {
+            textNodes.push(text);
+          }
         }
       }
       value = textNodes.join(' ').trim();
@@ -534,29 +599,22 @@ function extractFromDetailPage() {
 
     if (value && value.length > 0 && value.length < 500) {
       const key = label.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
-      extracted[key] = value;
+
+      // Clean based on field type
+      if (key.includes('email')) {
+        extracted[key] = cleanText(value, 'email');
+      } else if (key.includes('phone') || key.includes('mobile')) {
+        extracted[key] = cleanText(value, 'phone');
+      } else {
+        extracted[key] = cleanText(value);
+      }
+
+      console.log(`[SF Extractor] Found field: ${key} = ${extracted[key]}`);
     }
   });
 
-  // Strategy 2: Fallback for specific Lightning components (Records Header / Compact Layout)
-  if (Object.keys(extracted).length < 3) {
-    const compactFields = document.querySelectorAll('.slds-page-header__detail-block, lightning-output-field');
-    compactFields.forEach(field => {
-      const labelEl = field.querySelector('.slds-text-title, .slds-form-element__label');
-      const valueEl = field.querySelector('.slds-form-element__control, lightning-formatted-text, lightning-formatted-name, a');
-      
-      if (labelEl && valueEl) {
-        const label = labelEl.textContent.trim();
-        const value = valueEl.textContent.trim();
-        if (label && value) {
-          const key = label.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
-          if (!extracted[key]) extracted[key] = value;
-        }
-      }
-    });
-  }
-
   Object.assign(record, extracted);
+
 
   // Strategy 3: Handle specific required fields mapping if they have different names
   const fieldMap = {
@@ -587,11 +645,11 @@ function extractFromDetailPage() {
 
     // Find email in page
     const emailLink = Array.from(document.querySelectorAll('a[href^="mailto:"]')).find(el => el.textContent?.includes('@'));
-    if (emailLink) record.email = emailLink.textContent?.trim();
+    if (emailLink) record.email = cleanText(emailLink.textContent, 'email');
 
     // Find phone in page
     const phoneLink = Array.from(document.querySelectorAll('a[href^="tel:"]')).find(el => el.textContent);
-    if (phoneLink) record.phone = phoneLink.textContent?.trim();
+    if (phoneLink) record.phone = cleanText(phoneLink.textContent, 'phone');
   }
 
   record.extractedAt = Date.now();
@@ -599,67 +657,168 @@ function extractFromDetailPage() {
 }
 
 // Extract from list view
+// Extract from list view
 function extractFromListView() {
   const records = [];
   const seen = new Set();
 
-  // Strategy 1: Extract from table rows with links
-  const rows = document.querySelectorAll('tbody tr, [role="row"]');
-  
-  rows.forEach((row) => {
-    const linkElement = row.querySelector('a[href*="/lightning/r/"]');
-    if (!linkElement) return;
+  console.log('[SF Extractor] Starting list view extraction...');
 
-    const href = linkElement.href;
-    const idMatch = href.match(/\/r\/([^/]+)\/(\w+)/);
-    if (!idMatch) return;
+  // Find the table
+  const table = document.querySelector('table');
+  if (!table) {
+    console.log('[SF Extractor] No table found');
+    return records;
+  }
 
-    const id = idMatch[2];
-    if (seen.has(id)) return;
-    seen.add(id);
+  // Get tbody if it exists, otherwise get direct tr children
+  const tbody = table.querySelector('tbody');
+  let rows = [];
+  if (tbody) {
+    rows = Array.from(tbody.querySelectorAll('tr'));
+    console.log('[SF Extractor] Found', rows.length, 'rows in tbody');
+  } else {
+    rows = Array.from(table.querySelectorAll('tr')).slice(1); // Skip header
+    console.log('[SF Extractor] Found', rows.length, 'rows (no tbody)');
+  }
 
-    const record = {
-      id: id,
-      name: linkElement.textContent?.trim() || '',
-      extractedAt: Date.now()
-    };
+  if (rows.length === 0) {
+    console.log('[SF Extractor] No rows found in table');
+    return records;
+  }
 
-    // Extract other visible cells
-    const cells = row.querySelectorAll('td, [role="gridcell"]');
-    let fieldIndex = 1;
-    for (let i = 1; i < cells.length && fieldIndex < 8; i++) {
-      const text = cells[i].textContent?.trim();
-      if (text && text.length > 0 && text.length < 100) {
-        record[`field_${fieldIndex}`] = text;
-        fieldIndex++;
+  // Map to fields based on dynamic column detection
+  const headers = Array.from(table.querySelectorAll('thead th')).map(th => {
+    const walker = document.createTreeWalker(th, NodeFilter.SHOW_TEXT, (node) => {
+      const parent = node.parentElement;
+      if (parent && (parent.classList.contains('slds-assistive-text') || parent.style.display === 'none' || parent.style.visibility === 'hidden')) {
+        return NodeFilter.FILTER_REJECT;
       }
-    }
+      return NodeFilter.FILTER_ACCEPT;
+    });
 
-    if (record.name) {
-      records.push(record);
+    let headerText = '';
+    let node;
+    while (node = walker.nextNode()) headerText += node.textContent + ' ';
+    return headerText.trim().toLowerCase();
+  });
+
+  rows.forEach((row, rowIndex) => {
+    try {
+      const cells = Array.from(row.querySelectorAll('td'));
+      if (cells.length === 0) return;
+
+      // Extract ID from first available link
+      let id = null;
+      const firstLink = row.querySelector('a[href*="/lightning/r/"]');
+      if (firstLink && firstLink.href) {
+        const matches = firstLink.href.match(/\/lightning\/r\/([a-zA-Z0-9]{15,18})/);
+        if (matches && matches[1]) id = matches[1];
+      }
+
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+
+      const record = {
+        id: id,
+        extractedAt: Date.now()
+      };
+
+      // 1. Scan the whole row for global patterns
+      const rowText = row.innerText.replace(/\s+/g, ' ');
+      const globalEmail = rowText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)?.[0] || '';
+      const globalPhone = rowText.match(/(?:\+?\d{1,4}[-.\s]?)?\(?\d{2,5}\)?[-.\s]?\d{3,5}[-.\s]?\d{4,6}/)?.[0] || '';
+
+      cells.forEach((cell, cellIndex) => {
+        const header = headers[cellIndex] || '';
+        if (header.includes('select') || cellIndex === 0) return;
+
+        let text = '';
+        const formatted = cell.querySelector('lightning-formatted-text, lightning-formatted-email, lightning-formatted-phone, .slds-truncate a');
+        if (formatted) {
+          text = formatted.textContent?.trim();
+        } else {
+          const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, (node) => {
+            const parent = node.parentElement;
+            if (parent && (parent.classList.contains('slds-assistive-text') || parent.classList.contains('slds-form-element__label') || parent.style.display === 'none')) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+          });
+          const parts = [];
+          let node;
+          while (node = walker.nextNode()) parts.push(node.textContent?.trim());
+          text = parts.filter(p => p).join(' ').trim();
+        }
+
+        if (!text) return;
+
+        // Surgical Mapping
+        if (header.includes('name') || header.includes('subject')) {
+          let cleanName = text;
+          if (globalEmail) cleanName = cleanName.replace(globalEmail, '');
+          if (globalPhone) cleanName = cleanName.replace(globalPhone, '');
+          record.name = cleanText(cleanName);
+          record.subject = record.name;
+        }
+        else if (header.includes('account') || header.includes('company')) {
+          let cleanCompany = text;
+          if (globalEmail) cleanCompany = cleanCompany.replace(globalEmail, '');
+          if (globalPhone) cleanCompany = cleanCompany.replace(globalPhone, '');
+          record.company = cleanText(cleanCompany);
+          record.accountName = record.company;
+          record.account = record.company;
+        }
+        else if (header.includes('phone') || header.includes('mobile')) {
+          record.phone = cleanText(text, 'phone');
+        }
+        else if (header.includes('email')) {
+          record.email = cleanText(text, 'email');
+        }
+        else if (header.includes('source')) {
+          record.leadSource = cleanText(text);
+        }
+        else if (header.includes('amount') || header.includes('revenue')) {
+          record.amount = cleanText(text).replace(/[$,]/g, '');
+        }
+        else if (header.includes('date')) {
+          const dt = cleanText(text);
+          record.closeDate = dt;
+          record.dueDate = dt;
+        }
+        else if (header.includes('owner') || header.includes('assign')) {
+          record.owner = cleanText(text);
+          record.assignedTo = record.owner;
+          record.assignee = record.owner;
+        }
+        else if (header.includes('status') || header.includes('stage')) {
+          record.status = cleanText(text);
+          record.stage = record.status;
+        }
+        else if (header.includes('priority')) {
+          record.priority = cleanText(text);
+        }
+      });
+
+      // 2. Final Field Backfill from Global Scan
+      if (!record.email && globalEmail) record.email = globalEmail;
+      if (!record.phone && globalPhone) record.phone = globalPhone;
+
+      // 3. Fallback for Name if missing
+      if (!record.name && firstLink) {
+        record.name = cleanText(firstLink.textContent);
+        record.subject = record.name;
+      }
+
+      if (record.name) {
+        records.push(record);
+      }
+    } catch (error) {
+      console.error(`[SF Extractor] Row ${rowIndex}: ERROR`, error.message);
     }
   });
 
-  // If no records found, try alternative extraction
-  if (records.length === 0) {
-    const links = document.querySelectorAll('a[href*="/lightning/r/"]');
-    links.forEach((link) => {
-      const href = link.href;
-      const idMatch = href.match(/\/r\/([^/]+)\/(\w+)/);
-      if (!idMatch) return;
-
-      const id = idMatch[2];
-      if (!seen.has(id)) {
-        seen.add(id);
-        records.push({
-          id: id,
-          name: link.textContent?.trim() || '',
-          extractedAt: Date.now()
-        });
-      }
-    });
-  }
-
+  console.log(`[SF Extractor] Extraction complete: ${records.length} records`);
   return records;
 }
 
@@ -680,10 +839,10 @@ async function extractData() {
       // Extract single record from detail page
       const record = extractFromDetailPage();
       records = [record];
-      
+
       // Also extract related records (Contacts under Account, etc.)
       relatedRecords = extractRelatedRecords();
-      
+
       console.log('[SF Extractor] Extracted from detail page:', record);
       console.log('[SF Extractor] Related records found:', relatedRecords.length);
     } else if (isKanbanView()) {
@@ -719,24 +878,42 @@ async function extractData() {
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[SF Extractor] Message received:', request);
-  if (request.action === 'extract') {
-    const objectType = detectObjectType();
-    
-    if (!objectType) {
+
+  if (request.action !== 'extract') {
+    return false;
+  }
+
+  try {
+    // Check if we're on Salesforce
+    const isSalesforceUrl = window.location.href.includes('salesforce.com') || window.location.href.includes('force.com');
+    if (!isSalesforceUrl) {
+      console.warn('[SF Extractor] Not on Salesforce domain');
       sendResponse({
         success: false,
-        error: 'Unable to detect Salesforce object type. Please make sure you are viewing a Lead, Contact, Account, Opportunity, or Task list/detail page.'
+        error: 'Please open this extension on a Salesforce page (salesforce.com or force.com)'
       });
-      return;
+      return true;
+    }
+
+    const objectType = detectObjectType();
+    console.log('[SF Extractor] Detected object type:', objectType);
+
+    if (!objectType) {
+      console.error('[SF Extractor] Could not detect object type from page');
+      sendResponse({
+        success: false,
+        error: 'Unable to detect Salesforce object type. Please make sure you are viewing a Lead, Contact, Account, Opportunity, or Task list or detail page.'
+      });
+      return true;
     }
 
     // Show loading indicator
     indicator.showLoading(objectType);
-    
+
     // Extract data (async)
     extractData().then((result) => {
       console.log('[SF Extractor] Extraction result:', result);
-      
+
       // Show success or error indicator
       if (result.success) {
         if (result.count === 0) {
@@ -754,15 +931,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse(result);
       }
     }).catch((error) => {
-      console.error('[SF Extractor] Error:', error);
-      indicator.showError(error.message);
-      sendResponse({ 
-        success: false, 
+      console.error('[SF Extractor] Async extraction error:', error);
+      indicator.showError(error.message || 'Extraction failed');
+      sendResponse({
+        success: false,
         error: error.message || 'Extraction failed. Please try again.'
       });
     });
 
     return true; // Keep channel open for async response
+  } catch (error) {
+    console.error('[SF Extractor] Sync error:', error);
+    sendResponse({
+      success: false,
+      error: error.message || 'An unexpected error occurred'
+    });
+    return true;
   }
 });
 
